@@ -29,43 +29,85 @@ function OpusStreamDecoder(options) {
   Object.defineProperty(this, 'onDecode', {value: options.onDecode});
 }
 
-// Emscripten will resolve this promise when Wasm is instantiated
+function opusStreamDecoderBindApi() {
+  // Prefer Module.* (Emscripten 3+); fall back to globals for older builds.
+  var M = (typeof Module !== 'undefined') ? Module : null;
+  var _cwrap = (M && M.cwrap) ? M.cwrap.bind(M) : cwrap;
+  var _HEAPU8 = (M && M.HEAPU8) ? M.HEAPU8 : HEAPU8;
+  var _HEAPF32 = (M && M.HEAPF32) ? M.HEAPF32 : HEAPF32;
+
+  var api = {
+    malloc: _cwrap('malloc', 'number', ['number']),
+    free: _cwrap('free', null, ['number']),
+    HEAPU8: _HEAPU8,
+    HEAPF32: _HEAPF32,
+
+    libopusVersion: _cwrap('opus_get_version_string', 'string', []),
+    decoderVersion: _cwrap('opus_chunkdecoder_version', 'string', []),
+    createDecoder: _cwrap('opus_chunkdecoder_create', 'number', []),
+    freeDecoder: _cwrap('opus_chunkdecoder_free', null, ['number']),
+    enqueue: _cwrap('opus_chunkdecoder_enqueue', 'number', ['number', 'number', 'number']),
+    decode: _cwrap('opus_chunkdecoder_decode_float_stereo_deinterleaved', 'number', ['number', 'number', 'number', 'number', 'number']),
+  };
+
+  Object.freeze(api);
+  Object.defineProperty(OpusStreamDecoder.prototype, 'api', {value: api});
+  return api;
+}
+
+// Emscripten resolves when Wasm HEAP is ready.
+// Modern Emscripten often skips addOnPreMain callbacks (no main / async wasm),
+// so also hook onRuntimeInitialized and poll for HEAPU8.
 OpusStreamDecoder.prototype.ready = new Promise(function(resolve, reject) {
-  // queue the promise to resolve within Emscripten's init loop
-  addOnPreMain(function() {
-    var api = {
-      malloc: cwrap('malloc', 'number', ['number']),
-      free: cwrap('free', null, ['number']),
-      HEAPU8: HEAPU8,
-      HEAPF32: HEAPF32,
+  var settled = false;
 
-      libopusVersion: cwrap('opus_get_version_string', 'string', []),
-      decoderVersion: cwrap('opus_chunkdecoder_version', 'string', []),
-      createDecoder: cwrap('opus_chunkdecoder_create', null, []),
-      freeDecoder: cwrap('opus_chunkdecoder_free', null, ['number']),
-      enqueue: cwrap('opus_chunkdecoder_enqueue', null, ['number', 'number', 'number']),
-      decode: cwrap('opus_chunkdecoder_decode_float_stereo_deinterleaved', 'number', ['number', 'number', 'number', 'number']),
+  function done() {
+    if (settled) return;
+    settled = true;
+    try {
+      opusStreamDecoderBindApi();
+      resolve();
+    } catch (err) {
+      reject(err);
     }
+  }
 
-    // make api read-only
-    Object.freeze(api);
-    Object.defineProperty(OpusStreamDecoder.prototype, 'api', {value: api});
+  function heapReady() {
+    try {
+      if (typeof Module !== 'undefined' && Module.HEAPU8) return true;
+      if (typeof HEAPU8 !== 'undefined') return true;
+    } catch (_) {}
+    return false;
+  }
 
-    resolve();
-  });
+  function attempt() {
+    if (heapReady()) done();
+  }
 
-  // TODO this no longer works and throws error. Removing for now
-  //
-  // Propagate error to OpusStreamDecoder.ready.catch()
-  // WARNING: this is a hack based Emscripten's current abort() implementation
-  // and could break in the future.
-  // Rewrite existing abort(what) function to reject Promise before it executes.
-  // var origAbort = this.abort;
-  // this.abort = function(what) {
-  //   console.log('abort')
-  //   reject(Error(what));
-  //   origAbort.call(this, what);
-  // }
+  if (typeof addOnPreMain === 'function') {
+    addOnPreMain(attempt);
+  }
+
+  var M = typeof Module !== 'undefined' ? Module : {};
+  var prev = M['onRuntimeInitialized'];
+  M['onRuntimeInitialized'] = function() {
+    if (typeof prev === 'function') prev();
+    attempt();
+  };
+
+  if (M.calledRun || heapReady()) {
+    attempt();
+    return;
+  }
+
+  var ticks = 0;
+  var timer = setInterval(function() {
+    attempt();
+    if (settled || ++ticks > 500) clearInterval(timer);
+    if (ticks > 500 && !settled) {
+      reject(Error('OpusStreamDecoder: Wasm runtime failed to initialize'));
+    }
+  }, 10);
 });
 
 /*

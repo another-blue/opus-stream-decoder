@@ -59,18 +59,27 @@ Additionally, `onDecode` will be called thousands of times while decoding Opus f
 
 The `dist/` folder will contain all required files, tests, and examples after building.
 
-### Download Ogg, Opus, and Opusfile C libraries:
-```
-$ git submodule update --init
+**Pinned toolchain (BLUE-375 / C0):** Homebrew **emscripten 6.0.6** (verified macOS arm64).
+
+```sh
+brew install emscripten
+git submodule update --init --recursive   # src/{ogg,opus,opusfile}
+make clean dist
+make test-wasm   # Node; fixture at tmp/decode-test-64kbps.opus
 ```
 
-_TODO: consider moving this to Makefile_
+Modern-Emscripten notes: relocatable `tmp/lib.o` (not `.bc`); include `silk/float/*.c`; exclude celt demo/tests; heap-allocate the ~64KB decoder (WASM stack overflow otherwise); ready Promise uses `onRuntimeInitialized` + HEAP poll.
+
+### Download Ogg, Opus, and Opusfile C libraries:
+```
+$ git submodule update --init --recursive
+```
 
 ### Install Emscripten
 
-Emscripten is used to compile the C libraries to be compatible with WebAssembly.  This repo was tested with 1.39.5.
+Pin: Homebrew `emscripten` **6.0.6** (`emcc -v`). Historical builds used 1.39.x.
 
-* [Emscripten Installation Instructions](https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html#installation-instructions)
+* [Emscripten Installation Instructions](https://emscripten.org/docs/getting_started/downloads.html)
 
 ### Run the Build
 
@@ -78,12 +87,7 @@ Emscripten is used to compile the C libraries to be compatible with WebAssembly.
 $ make clean dist
 ```
 
-The Emscripten module builds in a few seconds, but most of the work will be spent configuring the dependencies `libopus`, `libogg`, and `libopusfile`. You may see the warnings (not errors) below, which don't prevent the build from succeeding.  It is not known whether these warnings adversly affect runtime use.
-
-- Don't have the functions lrint() and lrintf ()
-- Replacing these functions with a standard C cast
-- implicit conversion from 'unsigned int' to 'float'
-
+Compiles ogg/opus/opusfile sources into `tmp/lib.o`, then links `dist/opus-stream-decoder.{js,mjs,wasm}`. You may see lrint / float cast warnings; they do not fail the build.
 
 ### Build Errors
 
@@ -103,7 +107,7 @@ Two tests exist that will decode an Ogg Opus File with `OpusStreamDecoder`.  Bot
 
 This test writes two decoded left/right PCM audio data to files in `tmp/`. [Install NodeJS](https://nodejs.org/en/download/) and run:
 ```
-$ make test-wasm-module
+$ make test-wasm
 ```
 
 ### HTML Browser Test

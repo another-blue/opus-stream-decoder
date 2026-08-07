@@ -1,6 +1,6 @@
 WASM_MODULE=dist/opus-stream-decoder.js
 WASM_MODULE_ESM=dist/opus-stream-decoder.mjs
-WASM_LIB=tmp/lib.bc
+WASM_LIB=tmp/lib.o
 OGG_CONFIG_TYPES=src/ogg/include/ogg/config_types.h
 OPUS_DECODE_TEST_FILE_URL=https://fetch-stream-audio.anthum.com/audio/save/opus-stream-decoder-test.opus
 OPUS_DECODE_TEST_FILE=tmp/decode-test-64kbps.opus
@@ -49,7 +49,7 @@ define WASM_EMCC_OPTS
 -O3 \
 -s NO_DYNAMIC_EXECUTION=1 \
 -s NO_FILESYSTEM=1 \
--s EXTRA_EXPORTED_RUNTIME_METHODS="['cwrap']" \
+-s EXPORTED_RUNTIME_METHODS="['cwrap','addOnPreMain','HEAPU8','HEAPF32']" \
 -s EXPORTED_FUNCTIONS="[ \
     '_free', '_malloc' \
   , '_opus_get_version_string' \
@@ -64,7 +64,7 @@ define WASM_EMCC_OPTS
 -I src/opusfile/include \
 -I "src/ogg/include" \
 -I "src/opus/include" \
-src/opus_chunkdecoder.c \ 
+src/opus_chunkdecoder.c
 endef
 
 
@@ -109,10 +109,10 @@ $(WASM_LIB):
 	@ echo "Building Ogg/Opus Emscripten Library $(WASM_LIB)..."
 	@ emcc \
 	  -o "$(WASM_LIB)" \
+	  -r \
 	  -O0 \
 	  -D VAR_ARRAYS \
 	  -D OPUS_BUILD \
-	  --llvm-lto 1 \
 	  -s NO_DYNAMIC_EXECUTION=1 \
 	  -s NO_FILESYSTEM=1 \
 	  -s EXPORTED_FUNCTIONS="[ \
@@ -138,8 +138,9 @@ $(WASM_LIB):
 	  src/opus/src/opus_multistream.c \
 	  src/opus/src/opus_multistream_decoder.c \
 	  src/opus/src/opus_decoder.c \
-	  src/opus/silk/*.c \
-	  src/opus/celt/*.c \
+	  $$(ls src/opus/silk/*.c | grep -v '_test\.c$$') \
+	  $$(ls src/opus/silk/float/*.c | grep -v '_test\.c$$') \
+	  $$(ls src/opus/celt/*.c | grep -v 'demo\.c$$' | grep -v '_test\.c$$') \
 	  src/ogg/src/*.c \
 	  src/opusfile/src/*.c
 	@ echo "+-------------------------------------------------------------------------------"
@@ -157,8 +158,8 @@ $(CONFIGURE_LIBOGG):
 
 $(OGG_CONFIG_TYPES):
 	cd src/ogg; emconfigure ./configure
-	# Remove a.out* files created by emconfigure
-	cd src/ogg; rm a.out*
+	# Remove a.out* files created by emconfigure (ok if none)
+	cd src/ogg; rm -f a.out*
 
 
 $(OPUS_DECODE_TEST_FILE):

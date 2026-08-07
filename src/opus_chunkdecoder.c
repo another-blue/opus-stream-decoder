@@ -119,16 +119,15 @@ static ByteBuffer create_bytebuffer() {
 }
 
 OpusChunkDecoder *opus_chunkdecoder_create() {
-  OpusChunkDecoder decoder;
-  decoder.cb.read = (int (*)(void *, unsigned char *, int))cb_read;
-  decoder.cb.seek = NULL;
-  decoder.cb.tell = NULL;
-  decoder.cb.close = NULL;
-  decoder.of = NULL;
-  decoder.buffer = create_bytebuffer();
+  OpusChunkDecoder *ptr = malloc(sizeof(OpusChunkDecoder));
+  if (!ptr) return NULL;
 
-  OpusChunkDecoder *ptr = malloc(sizeof(decoder));
-  *ptr = decoder;
+  ptr->cb.read = (int (*)(void *, unsigned char *, int))cb_read;
+  ptr->cb.seek = NULL;
+  ptr->cb.tell = NULL;
+  ptr->cb.close = NULL;
+  ptr->of = NULL;
+  ptr->buffer = create_bytebuffer();
   return ptr;
 }
 
