@@ -70,6 +70,8 @@ make test-wasm   # Node; fixture at tmp/decode-test-64kbps.opus
 
 Modern-Emscripten notes: relocatable `tmp/lib.o` (not `.bc`); include `silk/float/*.c`; exclude celt demo/tests; heap-allocate the ~64KB decoder (WASM stack overflow otherwise); ready Promise uses `onRuntimeInitialized` + HEAP poll.
 
+**Seekable decode (BLUE-376):** `SeekableOpusDecoder` + `make test-seek`. Uses ASYNCIFY so `op_open_callbacks` / `op_pcm_seek` can await JS `fetchRange(start, endInclusive)`.
+
 ### Download Ogg, Opus, and Opusfile C libraries:
 ```
 $ git submodule update --init --recursive
