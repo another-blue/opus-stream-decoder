@@ -164,8 +164,15 @@ $(OGG_CONFIG_TYPES):
 
 $(OPUS_DECODE_TEST_FILE):
 	@ mkdir -p tmp
-	@ echo "Downloading decode test file $(OPUS_DECODE_TEST_FILE_URL)..."
-	@ wget -q --show-progress $(OPUS_DECODE_TEST_FILE_URL) -O $(OPUS_DECODE_TEST_FILE)
+	@ if [ -f "$(OPUS_DECODE_TEST_FILE)" ]; then exit 0; fi
+	@ echo "Creating decode test file $(OPUS_DECODE_TEST_FILE)..."
+	@ if command -v ffmpeg >/dev/null 2>&1; then \
+		ffmpeg -y -f lavfi -i "sine=frequency=440:duration=2" -c:a libopus -b:a 64k "$(OPUS_DECODE_TEST_FILE)"; \
+	elif command -v wget >/dev/null 2>&1; then \
+		wget -q --show-progress $(OPUS_DECODE_TEST_FILE_URL) -O $(OPUS_DECODE_TEST_FILE); \
+	else \
+		echo "Need ffmpeg or wget to create $(OPUS_DECODE_TEST_FILE)"; exit 1; \
+	fi
 
 
 native-decode-test: $(OPUS_DECODE_TEST_FILE)
