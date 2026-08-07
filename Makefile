@@ -21,12 +21,18 @@ test-wasm: dist $(OPUS_DECODE_TEST_FILE)
 	@ echo "Testing 64 kbps Opus file..."
 	@ node $(TEST_FILE_JS) $(OPUS_DECODE_TEST_FILE) tmp
 
-.PHONY: native-decode-test
+test-seek: dist $(OPUS_DECODE_TEST_FILE)
+	@ mkdir -p tmp
+	@ echo "Testing seekable mid-file Range decode..."
+	@ node dist/test-opus-seek-decoder.js $(OPUS_DECODE_TEST_FILE)
+
+.PHONY: native-decode-test test-seek
 
 clean: dist-clean wasmlib-clean configures-clean
 
 dist: wasm wasm-esm
 	@ cp src/test-opus-stream-decoder* dist
+	@ cp src/test-opus-seek-decoder.js dist
 dist-clean:
 	rm -rf dist/*
 
@@ -47,8 +53,10 @@ native-decode-test: $(OPUS_DECODE_TEST_FILE)
 
 define WASM_EMCC_OPTS
 -O3 \
--s NO_DYNAMIC_EXECUTION=1 \
 -s NO_FILESYSTEM=1 \
+-s ALLOW_MEMORY_GROWTH=1 \
+-s ASYNCIFY \
+-s ASYNCIFY_STACK_SIZE=65536 \
 -s EXPORTED_RUNTIME_METHODS="['cwrap','addOnPreMain','HEAPU8','HEAPF32']" \
 -s EXPORTED_FUNCTIONS="[ \
     '_free', '_malloc' \
@@ -58,13 +66,20 @@ define WASM_EMCC_OPTS
   , '_opus_chunkdecoder_free' \
   , '_opus_chunkdecoder_enqueue' \
   , '_opus_chunkdecoder_decode_float_stereo_deinterleaved' \
+  , '_opus_seek_decoder_create' \
+  , '_opus_seek_decoder_free' \
+  , '_opus_seek_decoder_open' \
+  , '_opus_seek_decoder_pcm_total' \
+  , '_opus_seek_decoder_pcm_seek' \
+  , '_opus_seek_decoder_read_stereo' \
 ]" \
 --pre-js 'src/emscripten-pre.js' \
 --post-js 'src/emscripten-post.js' \
 -I src/opusfile/include \
 -I "src/ogg/include" \
 -I "src/opus/include" \
-src/opus_chunkdecoder.c
+src/opus_chunkdecoder.c \
+src/opus_seek_decoder.c
 endef
 
 
